@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>五子棋人机对战</title>
+    <style>
+        body { margin: 0; padding: 0; background: #f0d9b5; }
+        #menu { text-align: center; padding: 20px; }
+        #board { touch-action: none; }
+        button { padding: 10px 20px; font-size: 18px; }
+    </style>
+</head>
+<body>
+    <div id="menu">
+        <button onclick="startGame(true)">玩家先手</button>
+        <button onclick="startGame(false)">AI先手</button>
+    </div>
+    <canvas id="board"></canvas>
+
+<script>
+const canvas = document.getElementById('board');
+const ctx = canvas.getContext('2d');
+const GRID_SIZE = 19;
+const CELL_SIZE = Math.min(window.innerWidth, window.innerHeight * 0.9) / (GRID_SIZE + 1);
+let board = [];
+let gameOver = false;
+let playerTurn = true;
+
+// 初始化棋盘
+function initBoard() {
+    canvas.width = CELL_SIZE * (GRID_SIZE + 1);
+    canvas.height = CELL_SIZE * (GRID_SIZE + 1);
+    board = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(0));
+    drawBoard();
+}
+
+// 绘制棋盘
+function drawBoard() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // 绘制网格
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < GRID_SIZE; i++) {
+        ctx.beginPath();
+        ctx.moveTo(CELL_SIZE + i * CELL_SIZE, CELL_SIZE);
+        ctx.lineTo(CELL_SIZE + i * CELL_SIZE, CELL_SIZE * GRID_SIZE);
+        ctx.stroke();
+        
+        ctx.beginPath();
+        ctx.moveTo(CELL_SIZE, CELL_SIZE + i * CELL_SIZE);
+        ctx.lineTo(CELL_SIZE * GRID_SIZE, CELL_SIZE + i * CELL_SIZE);
+        ctx.stroke();
+    }
+    
+    // 绘制棋子
+    for (let i = 0; i < GRID_SIZE; i++) {
+        for (let j = 0; j < GRID_SIZE; j++) {
+            if (board[i][j] === 1) {
+                drawStone(i, j, '#000');
+            } else if (board[i][j] === 2) {
+                drawStone(i, j, '#fff');
+            }
+        }
+    }
+}
+
+// 绘制棋子
+function drawStone(x, y, color) {
+    ctx.beginPath();
+    ctx.arc(CELL_SIZE + x * CELL_SIZE, CELL_SIZE + y * CELL_SIZE, CELL_SIZE/2.5, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.stroke();
+}
+
+// 游戏开始
+function startGame(isPlayerFirst) {
+    gameOver = false;
+    playerTurn = isPlayerFirst;
+    initBoard();
+    if (!isPlayerFirst) aiMove();
+}
+
+// 玩家落子
+canvas.addEventListener('click', (e) => {
+    if (gameOver || !playerTurn) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.round((e.clientX - rect.left - CELL_SIZE) / CELL_SIZE);
+    const y = Math.round((e.clientY - rect.top - CELL_SIZE) / CELL_SIZE);
+    
+    if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE && board[x][y] === 0) {
+        placeStone(x, y, 1);
+        if (checkWin(x, y, 1)) {
+            gameOver = true;
+            alert('玩家胜利！');
+            return;
+        }
+        playerTurn = false;
+        setTimeout(aiMove, 500);
+    }
+});
+
+// AI移动
+function aiMove() {
+    const startTime = Date.now();
+    let bestScore = -Infinity;
+    let bestMoves = [];
+    
+    // 遍历所有可能位置
+    for (let x = 0; x < GRID_SIZE; x++) {
+        for (let y = 0; y < GRID_SIZE; y++) {
+            if (board[x][y] !== 0) continue;
+            
+            let score = evaluatePosition(x, y, 2); // 进攻得分
+            score += evaluatePosition(x, y, 1) * 0.8; // 防守得分
+            
+            if (score > bestScore) {
+                bestScore = score;
+                bestMoves = [{x, y}];
+            } else if (score === bestScore) {
+                bestMoves.push({x, y});
+            }
+            
+            // 时间限制
+            if (Date.now() - startTime > 2800) break;
+        }
+    }
+    
+    // 随机选择最佳位置之一
+    const move = bestMoves[Math.floor(Math.random() * bestMoves.length)];
+    placeStone(move.x, move.y, 2);
+    
+    if (checkWin(move.x, move.y, 2)) {
+        gameOver = true;
+        alert('AI胜利！');
+    }
+    playerTurn = true;
+}
+
+// 评估位置得分
+function evaluatePosition(x, y, player) {
+    let score = 0;
+    const directions = [[1,0], [0,1], [1,1], [1,-1]];
+    
+    directions.forEach(([dx, dy]) => {
+        let count = 1;
+        let openEnds = 0;
+        
+        // 正向检测
+        let i = 1;
+        while (x + dx*i >= 0 && x + dx*i < GRID_SIZE && 
+               y + dy*i >= 0 && y + dy*i < GRID_SIZE) {
+            if (board[x + dx*i][y + dy*i] === player) {
+                count++;
+                i++;
+            } else {
+                if (board[x + dx*i][y + dy*i] === 0) openEnds++;
+                break;
+            }
+        }
+        
+        // 反向检测
+        i = 1;
+        while (x - dx*i >= 0 && x - dx*i < GRID_SIZE && 
+               y - dy*i >= 0 && y - dy*i < GRID_SIZE) {
+            if (board[x - dx*i][y - dy*i] === player) {
+                count++;
+                i++;
+            } else {
+                if (board[x - dx*i][y - dy*i] === 0) openEnds++;
+                break;
+            }
+        }
+        
+        // 评分逻辑
+        if (count >= 5) score += 100000;
+        else if (count === 4) score += openEnds === 2 ? 1000 : 500;
+        else if (count === 3) score += openEnds === 2 ? 200 : 100;
+        else if (count === 2) score += openEnds === 2 ? 10 : 5;
+    });
+    
+    return score;
+}
+
+// 放置棋子
+function placeStone(x, y, player) {
+    board[x][y] = player;
+    drawBoard();
+}
+
+// 检查胜利
+function checkWin(x, y, player) {
+    const directions = [[1,0], [0,1], [1,1], [1,-1]];
+    
+    for (let [dx, dy] of directions) {
+        let count = 1;
+        let i = 1;
+        while (x + dx*i >= 0 && x + dx*i < GRID_SIZE && 
+               y + dy*i >= 0 && y + dy*i < GRID_SIZE && 
+               board[x + dx*i][y + dy*i] === player) {
+            count++;
+            i++;
+        }
+        
+        i = 1;
+        while (x - dx*i >= 0 && x - dx*i < GRID_SIZE && 
+               y - dy*i >= 0 && y - dy*i < GRID_SIZE && 
+               board[x - dx*i][y - dy*i] === player) {
+            count++;
+            i++;
+        }
+        
+        if (count >= 5) return true;
+    }
+    return false;
+}
+</script>
+</body>
+</html>
